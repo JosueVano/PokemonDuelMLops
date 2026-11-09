@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pokémon Duel MLOps — Recommandation IA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+  <header class="bg-gradient-to-r from-indigo-800 to-violet-700 text-white px-6 py-5">
+    <div class="max-w-5xl mx-auto flex items-center gap-3 flex-wrap">
+      <div>
+        <h1 class="text-2xl font-bold">Pokémon Duel MLOps</h1>
+        <p class="text-indigo-100 text-sm">Comparez deux Pokémon et obtenez une recommandation basée sur les combats historiques.</p>
+      </div>
+      <button onclick="retrain()" id="retrainBtn"
+        class="ml-auto bg-white/15 hover:bg-white/25 border border-white/30 rounded-lg px-3 py-2 text-sm">
+        Ré-entraîner les modèles
+      </button>
+    </div>
+  </header>
+
+  <nav class="bg-white border-b sticky top-0 z-10">
+    <div class="max-w-5xl mx-auto flex gap-1 px-4 overflow-x-auto">
+      <button class="tab px-4 py-3 text-sm font-medium border-b-2 border-indigo-600 text-indigo-700" data-tab="duel">Recommander</button>
+      <button class="tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500" data-tab="lot">Lot CSV</button>
+      <button class="tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500" data-tab="modeles">Modèles</button>
+      <button class="tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500" data-tab="monitoring">Monitoring</button>
+    </div>
+  </nav>
+
+  <main class="max-w-5xl mx-auto p-4 md:p-6">
+    <section id="tab-duel" class="grid md:grid-cols-2 gap-6">
+      <div class="bg-white rounded-2xl shadow p-5">
+        <h2 class="font-semibold mb-4">Choisissez les deux Pokémon</h2>
+        <label class="block text-sm text-slate-600 mb-1" for="pokemonFirst">Premier Pokémon</label>
+        <select id="pokemonFirst" class="w-full border rounded-lg p-2 mb-4"></select>
+        <label class="block text-sm text-slate-600 mb-1" for="pokemonSecond">Adversaire</label>
+        <select id="pokemonSecond" class="w-full border rounded-lg p-2"></select>
+        <button onclick="predict()" class="mt-5 w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl py-2.5 font-semibold">
+          Comparer et recommander
+        </button>
+        <p class="mt-3 text-xs text-slate-500">
+          Le modèle utilise les statistiques, les types et les résultats des combats fournis.
+          Cette estimation ne remplace pas une simulation complète des mécaniques du jeu.
+        </p>
+      </div>
+      <div class="space-y-4">
+        <div id="result" class="bg-white rounded-2xl shadow p-5 hidden">
+          <div class="text-sm text-slate-500">Pokémon recommandé</div>
+          <div id="winnerName" class="text-3xl font-bold text-indigo-700 mt-1"></div>
+          <div id="winnerConfidence" class="text-sm text-slate-500 mt-1"></div>
+          <div class="mt-5 space-y-3">
+            <div>
+              <div class="flex justify-between text-sm"><span id="firstName"></span><span id="firstProbability"></span></div>
+              <div class="bg-slate-100 rounded-full h-3 overflow-hidden"><div id="firstBar" class="bg-indigo-500 h-3"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between text-sm"><span id="secondName"></span><span id="secondProbability"></span></div>
+              <div class="bg-slate-100 rounded-full h-3 overflow-hidden"><div id="secondBar" class="bg-violet-500 h-3"></div></div>
+            </div>
+          </div>
+        </div>
+        <div id="resultEmpty" class="bg-white rounded-2xl shadow p-8 text-center text-slate-400">
+          Sélectionnez deux Pokémon pour lancer la comparaison.
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-lot" class="hidden">
+      <div class="bg-white rounded-2xl shadow p-6 max-w-xl mx-auto text-center">
+        <h2 class="font-semibold mb-2">Recommandation pour un lot de duels</h2>
+        <p class="text-sm text-slate-500 mb-4">
+          CSV requis : <code class="bg-slate-100 px-1 rounded text-xs">POKEMON_PREMIER,POKEMON_SECOND</code>.
+          Le résultat ajoute le Pokémon recommandé et les probabilités.
+        </p>
+        <input type="file" id="csvFile" accept=".csv" class="mb-4 text-sm">
+        <div>
+          <button onclick="predictBatch()" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-6 py-2.5 font-semibold">
+            Analyser le fichier
+          </button>
+        </div>
+        <p id="batchMsg" class="mt-3 text-sm" role="status"></p>
+        <p class="mt-4 text-xs text-slate-400">
+          <a class="underline" href="#" onclick="sampleCsv(); return false;">Télécharger un CSV d'exemple</a>
+        </p>
+      </div>
+    </section>
+
+    <section id="tab-modeles" class="hidden space-y-6">
+      <div class="bg-white rounded-2xl shadow p-5">
+        <h2 class="font-semibold mb-3">Comparaison des modèles de classification</h2>
+        <table class="w-full text-sm">
+          <thead><tr class="text-left text-slate-500"><th class="py-2">Modèle</th><th>Accuracy</th><th>F1 macro</th><th></th></tr></thead>
+          <tbody id="modelRows"></tbody>
+        </table>
+        <p id="dataSummary" class="text-sm text-slate-500 mt-3"></p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="bg-white rounded-2xl shadow p-4">
+          <img src="/api/charts/confusion_matrix" alt="Matrice de confusion" class="w-full rounded-lg">
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <img src="/api/charts/feature_importance" alt="Importance des caractéristiques" class="w-full rounded-lg">
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4 md:col-span-2">
+          <img src="/api/charts/learning_curve" alt="Courbe d'apprentissage" class="w-full max-w-xl mx-auto rounded-lg">
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-monitoring" class="hidden space-y-6">
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="flex items-center gap-3 mb-3">
+          <h2 class="font-semibold">Dérive des caractéristiques des duels</h2>
+          <span id="driftStatus" class="px-3 py-1 rounded-full text-xs font-medium"></span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-slate-500">
+              <th class="py-2">Caractéristique</th><th>Moy. entraînement</th><th>Moy. récente</th><th>Z-score</th><th></th>
+            </tr></thead>
+            <tbody id="driftRows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl shadow p-5">
+        <h2 class="font-semibold mb-3">Dernières recommandations</h2>
+        <div id="historyRows" class="space-y-1 text-sm"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let pokemon = [];
+    const tabs = [...document.querySelectorAll('.tab')];
+
+    async function initialize() {
+      try {
+        const response = await fetch('/api/pokemon');
+        if (!response.ok) throw new Error(await response.text());
+        pokemon = await response.json();
+        for (const id of ['pokemonFirst', 'pokemonSecond']) {
+          const select = document.getElementById(id);
+          for (const item of pokemon) {
+            const option = document.createElement('option');
+            option.value = item.NUMERO;
+            option.textContent = `#${item.NUMERO} ${item.NOM} · ${item.TYPE_1}${item.TYPE_2 ? '/' + item.TYPE_2 : ''}`;
+            select.append(option);
+          }
+        }
+        document.getElementById('pokemonFirst').value = '1';
+        document.getElementById('pokemonSecond').value = '4';
+        const hash = location.hash.slice(1);
+        if (['lot', 'modeles', 'monitoring'].includes(hash)) showTab(hash);
+      } catch (error) {
+        alert('Impossible de charger le Pokédex : ' + error.message);
+      }
+    }
+
+    function showTab(name) {
+      for (const tab of tabs) {
+        const active = tab.dataset.tab === name;
+        tab.className = 'tab px-4 py-3 text-sm font-medium border-b-2 ' +
+          (active ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500');
+      }
+      document.querySelectorAll('main > section').forEach(section => section.classList.add('hidden'));
+      document.getElementById('tab-' + name).classList.remove('hidden');
+      if (name === 'modeles') loadModels();
+      if (name === 'monitoring') loadMonitoring();
+    }
+
+    tabs.forEach(tab => tab.addEventListener('click', () => showTab(tab.dataset.tab)));
+
+    async function predict() {
+      const response = await fetch('/api/predict', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          pokemon_premier: Number(document.getElementById('pokemonFirst').value),
+          pokemon_second: Number(document.getElementById('pokemonSecond').value)
+        })
+      });
+      if (!response.ok) return alert('Erreur : ' + (await response.json()).detail);
+      const result = await response.json();
+      document.getElementById('resultEmpty').classList.add('hidden');
+      document.getElementById('result').classList.remove('hidden');
+      document.getElementById('winnerName').textContent =
+        `#${result.recommandation.numero} ${result.recommandation.nom}`;
+      document.getElementById('winnerConfidence').textContent =
+        `Confiance estimée : ${Math.round(result.confiance * 100)} %`;
+      document.getElementById('firstName').textContent =
+        `#${result.pokemon_premier.numero} ${result.pokemon_premier.nom}`;
+      document.getElementById('secondName').textContent =
+        `#${result.pokemon_second.numero} ${result.pokemon_second.nom}`;
+      const firstPercent = Math.round(result.probabilite_premier * 100);
+      const secondPercent = Math.round(result.probabilite_second * 100);
+      document.getElementById('firstProbability').textContent = `${firstPercent} %`;
+      document.getElementById('secondProbability').textContent = `${secondPercent} %`;
+      document.getElementById('firstBar').style.width = `${firstPercent}%`;
+      document.getElementById('secondBar').style.width = `${secondPercent}%`;
+    }
+
+    async function predictBatch() {
+      const file = document.getElementById('csvFile').files[0];
+      const message = document.getElementById('batchMsg');
+      if (!file) { message.textContent = 'Choisissez un fichier CSV.'; return; }
+      const form = new FormData();
+      form.append('file', file);
+      message.textContent = 'Analyse en cours…';
+      const response = await fetch('/api/predict-batch', { method: 'POST', body: form });
+      if (!response.ok) {
+        const error = await response.json();
+        message.textContent = 'Erreur : ' + error.detail;
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(await response.blob());
+      link.download = 'duels_recommandes.csv';
+      link.click();
+      URL.revokeObjectURL(link.href);
+      message.textContent = 'Fichier enrichi téléchargé.';
+    }
+
+    function sampleCsv() {
+      const csv = 'POKEMON_PREMIER,POKEMON_SECOND\n1,4\n7,9\n25,26\n';
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      link.download = 'exemple_duels_pokemon.csv';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    async function loadModels() {
+      const response = await fetch('/api/metrics');
+      if (!response.ok) return;
+      const metrics = await response.json();
+      const rows = document.getElementById('modelRows');
+      rows.replaceChildren();
+      for (const [name, values] of Object.entries(metrics.classification.resultats)) {
+        const best = name === metrics.classification.modele_retenu;
+        const row = document.createElement('tr');
+        row.className = `border-t ${best ? 'bg-indigo-50' : ''}`;
+        row.innerHTML = `<td class="py-2 font-medium">${name.replaceAll('_', ' ')}</td>
+          <td>${(values.accuracy * 100).toFixed(1)} %</td>
+          <td>${(values.f1_macro * 100).toFixed(1)} %</td>
+          <td>${best ? 'Modèle retenu' : ''}</td>`;
+        rows.append(row);
+      }
+      document.getElementById('dataSummary').textContent =
+        `${metrics.n_pokemon} Pokémon · ${metrics.n_combats} combats · `
+        + `${metrics.n_combats_entrainement} combats d'entraînement · ${metrics.n_combats_test} de test`;
+      document.querySelectorAll('#tab-modeles img').forEach(image => {
+        image.src = image.src.split('?')[0] + '?' + Date.now();
+      });
+    }
+
+    async function loadMonitoring() {
+      const response = await fetch('/api/monitoring');
+      if (!response.ok) return;
+      const metrics = await response.json();
+      const status = document.getElementById('driftStatus');
+      status.textContent = `${metrics.statut} · ${metrics.n_predictions} recommandations`;
+      status.className = 'px-3 py-1 rounded-full text-xs font-medium ' +
+        (metrics.statut === 'ok' ? 'bg-green-100 text-green-700' :
+          metrics.statut === 'alerte dérive' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600');
+      const rows = document.getElementById('driftRows');
+      rows.replaceChildren();
+      for (const item of metrics.drift || []) {
+        const row = document.createElement('tr');
+        row.className = `border-t ${item.alerte ? 'bg-red-50' : ''}`;
+        row.innerHTML = `<td class="py-2">${item.feature}</td>
+          <td>${item.moyenne_entrainement}</td><td>${item.moyenne_recente}</td>
+          <td>${item.z_score}</td><td>${item.alerte ? 'Dérive' : 'OK'}</td>`;
+        rows.append(row);
+      }
+      const history = await (await fetch('/api/history')).json();
+      const historyRows = document.getElementById('historyRows');
+      historyRows.replaceChildren();
+      if (!history.length) {
+        historyRows.textContent = 'Aucune recommandation pour l’instant.';
+      }
+      for (const item of history.slice(0, 15)) {
+        const row = document.createElement('div');
+        row.className = 'flex gap-3 border-t py-1.5';
+        row.textContent = `${item.horodatage.replace('T', ' ')} · `
+          + `${item.pokemon_premier.nom} contre ${item.pokemon_second.nom} → `
+          + `${item.recommandation.nom} (${Math.round(item.confiance * 100)} %)`;
+        historyRows.append(row);
+      }
+    }
+
+    async function retrain() {
+      const button = document.getElementById('retrainBtn');
+      button.disabled = true;
+      button.textContent = 'Entraînement en cours…';
+      const response = await fetch('/api/retrain', { method: 'POST' });
+      button.disabled = false;
+      button.textContent = 'Ré-entraîner les modèles';
+      if (!response.ok) return alert('Erreur pendant le ré-entraînement : ' + (await response.text()));
+      alert('Modèles ré-entraînés.');
+      loadModels();
+    }
+
+    initialize();
+  </script>
+</body>
+</html>
